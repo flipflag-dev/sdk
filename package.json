@@ -1,6 +1,6 @@
 {
   "name": "@flipflag/sdk",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "type": "module",
   "types": "dist/index.d.ts",
   "description": "A lightweight client-side SDK for working with FlipFlag",
