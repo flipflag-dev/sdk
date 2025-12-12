@@ -1,9 +1,14 @@
 import {
+  FlipFlagYaml,
   IDeclareFeatureOptions,
+  IDeclareFeatureTime,
   IFeatureFlag,
   IFeatureFlagUsage,
   IManagerOptions,
-} from './types/provider';
+} from "./types/provider";
+import * as fs from "node:fs/promises";
+import * as path from "node:path";
+import * as yaml from "js-yaml";
 
 /**
  * Manager for interacting with FlipFlag.
@@ -37,7 +42,7 @@ export class FlipFlag {
    * @param opts Manager configuration (publicKey, privateKey, apiUrl, etc.)
    */
   constructor(protected readonly opts: IManagerOptions) {
-    this.options = { apiUrl: 'https://api.flipflag.dev', ...opts };
+    this.options = { apiUrl: "https://api.flipflag.dev", ...opts };
     this.interval = null;
   }
 
@@ -49,7 +54,9 @@ export class FlipFlag {
    *    • synchronize feature activation times
    */
   public async init() {
+    await this.loadConfigFromYaml();
     await this.getFeaturesFlags();
+    await this.syncFeaturesTimes();
 
     this.interval = setInterval(() => {
       this.getFeaturesFlags();
@@ -58,6 +65,61 @@ export class FlipFlag {
     }, 10_000);
 
     this.inited = true;
+  }
+
+  private async loadConfigFromYaml() {
+    const configPath =
+      this.options.configPath ?? path.resolve(process.cwd(), ".flipflag.yml");
+
+    let raw: string;
+    try {
+      raw = await fs.readFile(configPath, "utf8");
+    } catch (e: any) {
+      if (e?.code === "ENOENT" && this.options.ignoreMissingConfig) return;
+      throw new Error(
+        `FlipFlag: cannot read config at ${configPath}: ${e?.message ?? e}`,
+      );
+    }
+
+    let parsed: unknown;
+    try {
+      parsed = yaml.load(raw);
+    } catch (e: any) {
+      throw new Error(
+        `FlipFlag: invalid YAML in ${configPath}: ${e?.message ?? e}`,
+      );
+    }
+
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      throw new Error(
+        `FlipFlag: YAML root must be an object (mapping featureName -> config)`,
+      );
+    }
+
+    const doc = parsed as FlipFlagYaml;
+
+    for (const [featureName, cfg] of Object.entries(doc)) {
+      const times = (cfg?.times ?? []).map((t) => ({
+        email: doc.contributor,
+        start: t.started,
+        end: t.finished ?? null,
+      })) as IDeclareFeatureTime[];
+
+      for (const t of times) {
+        if (Number.isNaN(Date.parse(t.start))) {
+          throw new Error(
+            `FlipFlag: invalid "started" date in ${featureName}: ${t.start}`,
+          );
+        }
+        if (t.end !== null && Number.isNaN(Date.parse(String(t.end)))) {
+          throw new Error(
+            `FlipFlag: invalid "finished" date in ${featureName}: ${t.end}`,
+          );
+        }
+      }
+
+      this.featuresTimes[featureName] = { times };
+    }
   }
 
   /**
@@ -71,17 +133,6 @@ export class FlipFlag {
     this.featuresTimes = {};
     this.featuresFlags = {};
     this.featuresUsage = [];
-  }
-
-  /**
-   * Declares a feature locally.
-   * If the feature has not been loaded or created yet, it triggers creation.
-   *
-   * @param featureName Name of the feature
-   * @param options Declaration settings (e.g., times)
-   */
-  declareFeature(featureName: string, options: IDeclareFeatureOptions) {
-    this.featuresTimes[featureName] = options;
   }
 
   /**
@@ -114,7 +165,7 @@ export class FlipFlag {
    */
   private upsertFeaturesUsage(featureName: string) {
     const existing = this.featuresUsage.find(
-      (u) => u.featureName === featureName
+      (u) => u.featureName === featureName,
     );
 
     if (existing) {
@@ -138,19 +189,19 @@ export class FlipFlag {
    */
   private async createFeature(
     featureName: string,
-    options: IDeclareFeatureOptions
+    options: IDeclareFeatureOptions,
   ) {
     if (!this.options.privateKey) {
       return null;
     }
 
     const baseUrl = this.getBaseUrl();
-    const url = new URL('/v1/sdk/feature', baseUrl);
+    const url = new URL("/v1/sdk/feature", baseUrl);
 
     fetch(url.toString(), {
-      method: 'POST',
+      method: "POST",
       headers: {
-        'Content-Type': 'application/json',
+        "Content-Type": "application/json",
       },
       body: JSON.stringify({
         featureName,
@@ -158,17 +209,17 @@ export class FlipFlag {
         ...options,
       }),
     }).catch((error) => {
-      console.error('Create Feature:', error);
+      console.error("Create Feature:", error);
     });
   }
 
   private getBaseUrl() {
     if (this.options.apiUrl) {
-      return this.options.apiUrl.replace(/\/+$/, '');
+      return this.options.apiUrl.replace(/\/+$/, "");
     }
 
     throw new Error(
-      'Base API URL is not configured. Please provide apiUrl in the SDK options.'
+      "Base API URL is not configured. Please provide apiUrl in the SDK options.",
     );
   }
 
@@ -182,32 +233,32 @@ export class FlipFlag {
   private async getFeaturesFlags() {
     if (!this.options.publicKey) {
       throw new Error(
-        'Public key is missing. Please provide a valid publicKey in the SDK configuration.'
+        "Public key is missing. Please provide a valid publicKey in the SDK configuration.",
       );
     }
 
     try {
       const baseUrl = this.getBaseUrl();
-      const url = new URL('/v1/sdk/feature/flags', baseUrl);
-      url.searchParams.append('publicKey', this.options.publicKey);
+      const url = new URL("/v1/sdk/feature/flags", baseUrl);
+      url.searchParams.append("publicKey", this.options.publicKey);
 
       const response = await fetch(url.toString(), {
-        method: 'GET',
+        method: "GET",
         headers: {
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
         },
       });
 
       if (!response.ok && !this.inited) {
         const errorText = await response.text();
         throw new Error(
-          `Failed to get features: ${response.status} - ${errorText}`
+          `Failed to get features: ${response.status} - ${errorText}`,
         );
       }
 
       this.featuresFlags = await response.json();
     } catch (error) {
-      console.error('Get list features flag:', error);
+      console.error("Get list features flag:", error);
     }
   }
 
@@ -239,24 +290,24 @@ export class FlipFlag {
   private async syncFeaturesUsage() {
     if (!this.options.publicKey) {
       throw new Error(
-        'Public key is missing. Please provide a valid publicKey in the SDK configuration.'
+        "Public key is missing. Please provide a valid publicKey in the SDK configuration.",
       );
     }
 
     const baseUrl = this.getBaseUrl();
-    const url = new URL('/v1/sdk/feature/usages', baseUrl);
+    const url = new URL("/v1/sdk/feature/usages", baseUrl);
 
     fetch(url.toString(), {
-      method: 'POST',
+      method: "POST",
       headers: {
-        'Content-Type': 'application/json',
+        "Content-Type": "application/json",
       },
       body: JSON.stringify({
         publicKey: this.options.publicKey,
         usages: this.featuresUsage,
       }),
     }).catch((error) => {
-      console.error('Feature Usage Sync:', error);
+      console.error("Feature Usage Sync:", error);
     });
   }
 

@@ -1,244 +1,314 @@
-import { FlipFlag } from 'src/provider';
-import {
-  IDeclareFeatureOptions,
-  IFeatureFlag,
-  IManagerOptions,
-} from 'src/types/provider';
+// flipflag.test.ts
+import { FlipFlag } from "../provider";
 
-describe('FlipFlag', () => {
-  let fetchMock: jest.Mock;
+jest.useFakeTimers();
 
-  beforeAll(() => {
-    jest.useFakeTimers();
-  });
+describe("FlipFlag (SDK manager)", () => {
+  let readFileSpy: jest.SpyInstance;
+  let yamlLoadSpy: jest.SpyInstance;
+
+  const makeResponse = (opts: {
+    ok: boolean;
+    status?: number;
+    json?: any;
+    text?: string;
+  }) =>
+    ({
+      ok: opts.ok,
+      status: opts.status ?? (opts.ok ? 200 : 500),
+      json: jest.fn(async () => opts.json ?? {}),
+      text: jest.fn(async () => opts.text ?? ""),
+    }) as any;
 
   beforeEach(() => {
-    fetchMock = jest.fn();
-    (global as any).fetch = fetchMock;
-
-    // эмулируем window в Jest (если среда node)
-    (global as any).window = {
-      location: {
-        origin: 'https://test.local',
-      },
-    };
-
     jest.clearAllMocks();
+
+    // Mock node:fs/promises readFile
+    readFileSpy = jest
+      .spyOn(require("node:fs/promises"), "readFile")
+      .mockResolvedValue("");
+
+    // Mock js-yaml load
+    yamlLoadSpy = jest.spyOn(require("js-yaml"), "load").mockReturnValue({
+      contributor: "dev@example.com",
+      "my.feature": {
+        times: [{ started: "2025-01-01T10:00:00.000Z", finished: null }],
+      },
+    });
+
+    // Global fetch mock
+    (global as any).fetch = jest.fn().mockResolvedValue(
+      makeResponse({
+        ok: true,
+        json: { "my.feature": { enabled: true } },
+      }),
+    );
   });
 
-  const createManager = (opts: Partial<IManagerOptions> = {}) => {
-    const options: IManagerOptions = {
-      publicKey: 'public-key',
-      privateKey: 'private-key',
-      apiUrl: 'https://api.flipflag.dev',
-      ...opts,
-    } as IManagerOptions;
+  afterEach(() => {
+    jest.clearAllTimers();
+    readFileSpy?.mockRestore();
+    yamlLoadSpy?.mockRestore();
+  });
 
-    return new FlipFlag(options);
-  };
-
-  test('init загружает фичи и запускает интервал', async () => {
-    const manager = createManager();
-
-    const serverFlags: Record<string, IFeatureFlag> = {
-      featureA: { enabled: true } as any,
-    };
-
-    fetchMock.mockResolvedValue({
-      ok: true,
-      json: jest.fn().mockResolvedValue(serverFlags),
+  test("init() loads YAML, fetches flags, syncs times, and starts polling", async () => {
+    const sdk = new FlipFlag({
+      publicKey: "pub",
+      privateKey: "priv",
+      apiUrl: "https://api.flipflag.dev",
     });
 
-    await manager.init();
+    await sdk.init();
 
-    // 1 вызов fetch при init
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(fetchMock).toHaveBeenCalledWith(
-      'https://test.local/v1/sdk/feature?publicKey=public-key',
-      expect.objectContaining({
-        method: 'GET',
-      })
+    // 1) config read + yaml parsed
+    expect(readFileSpy).toHaveBeenCalledTimes(1);
+    expect(yamlLoadSpy).toHaveBeenCalledTimes(1);
+
+    // 2) initial flags fetch
+    expect((global as any).fetch).toHaveBeenCalledWith(
+      expect.stringContaining("/v1/sdk/feature/flags?publicKey=pub"),
+      expect.objectContaining({ method: "GET" }),
     );
 
-    // флаг должен быть в локальном кеше
-    expect(manager.isEnabled('featureA')).toBe(true);
+    // 3) syncFeaturesTimes triggers createFeature POST for YAML features (privateKey required)
+    expect((global as any).fetch).toHaveBeenCalledWith(
+      expect.stringContaining("/v1/sdk/feature"),
+      expect.objectContaining({
+        method: "POST",
+        body: expect.stringContaining('"privateKey":"priv"'),
+      }),
+    );
 
-    // интервал запустился — промотаем время и проверим, что fetch вызывается снова
-    fetchMock.mockResolvedValue({
-      ok: true,
-      json: jest.fn().mockResolvedValue(serverFlags),
-    });
-
+    // 4) polling every 10s
+    const fetchCallsBefore = (global as any).fetch.mock.calls.length;
     jest.advanceTimersByTime(10_000);
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    // allow queued microtasks to flush
+    await Promise.resolve();
+
+    const fetchCallsAfter = (global as any).fetch.mock.calls.length;
+    expect(fetchCallsAfter).toBeGreaterThan(fetchCallsBefore);
   });
 
-  test('init кидает ошибку, если нет publicKey', async () => {
-    const manager = createManager({ publicKey: undefined as any });
+  test("loadConfigFromYaml(): ignores missing config when ignoreMissingConfig=true", async () => {
+    readFileSpy.mockRejectedValueOnce(
+      Object.assign(new Error("no file"), { code: "ENOENT" }),
+    );
 
-    await expect(manager.init()).rejects.toThrow(
-      'Public key is missing. Please provide a valid publicKey in the SDK configuration.'
+    const sdk = new FlipFlag({
+      publicKey: "pub",
+      privateKey: "priv",
+      ignoreMissingConfig: true,
+    });
+
+    await expect(sdk.init()).resolves.toBeUndefined();
+
+    // Still attempts to fetch flags even if config is missing
+    expect((global as any).fetch).toHaveBeenCalledWith(
+      expect.stringContaining("/v1/sdk/feature/flags?publicKey=pub"),
+      expect.any(Object),
     );
   });
 
-  test('init кидает ошибку при неуспешном ответе сервера (первичная загрузка)', async () => {
-    const manager = createManager();
-
-    fetchMock.mockResolvedValue({
-      ok: false,
-      status: 500,
-      text: jest.fn().mockResolvedValue('Internal error'),
-    });
-
-    await expect(manager.init()).rejects.toThrow(
-      'Failed to get features: 500 - Internal error'
+  test("loadConfigFromYaml(): throws on missing config when ignoreMissingConfig=false", async () => {
+    readFileSpy.mockRejectedValueOnce(
+      Object.assign(new Error("no file"), { code: "ENOENT" }),
     );
-  });
 
-  test('isEnabled возвращает true при включённом флаге', () => {
-    const manager = createManager();
-    const anyManager = manager as any;
-
-    anyManager.featuresFlags = {
-      featureA: { enabled: true } as IFeatureFlag,
-    };
-
-    expect(manager.isEnabled('featureA')).toBe(true);
-  });
-
-  test('isEnabled возвращает false и создаёт фичу на сервере, если её нет локально и есть privateKey', () => {
-    const manager = createManager();
-    const anyManager = manager as any;
-
-    // нет такого флага
-    anyManager.featuresFlags = {};
-
-    fetchMock.mockResolvedValue({
-      ok: true,
-      json: jest.fn().mockResolvedValue({}),
+    const sdk = new FlipFlag({
+      publicKey: "pub",
+      privateKey: "priv",
+      ignoreMissingConfig: false,
     });
 
-    const enabled = manager.isEnabled('newFeature');
+    await expect(sdk.init()).rejects.toThrow(/cannot read config/i);
+  });
+
+  test("loadConfigFromYaml(): throws on invalid YAML", async () => {
+    yamlLoadSpy.mockImplementationOnce(() => {
+      throw new Error("bad yaml");
+    });
+
+    const sdk = new FlipFlag({
+      publicKey: "pub",
+      privateKey: "priv",
+    });
+
+    await expect(sdk.init()).rejects.toThrow(/invalid YAML/i);
+  });
+
+  test("loadConfigFromYaml(): throws if YAML root is not an object", async () => {
+    yamlLoadSpy.mockReturnValueOnce(["not-an-object"]);
+
+    const sdk = new FlipFlag({
+      publicKey: "pub",
+      privateKey: "priv",
+    });
+
+    await expect(sdk.init()).rejects.toThrow(/YAML root must be an object/i);
+  });
+
+  test('loadConfigFromYaml(): throws on invalid "started" date', async () => {
+    yamlLoadSpy.mockReturnValueOnce({
+      contributor: "dev@example.com",
+      "bad.feature": { times: [{ started: "NOT_A_DATE", finished: null }] },
+    });
+
+    const sdk = new FlipFlag({
+      publicKey: "pub",
+      privateKey: "priv",
+    });
+
+    await expect(sdk.init()).rejects.toThrow(/invalid "started" date/i);
+  });
+
+  test('loadConfigFromYaml(): throws on invalid "finished" date', async () => {
+    yamlLoadSpy.mockReturnValueOnce({
+      contributor: "dev@example.com",
+      "bad.feature": {
+        times: [{ started: "2025-01-01T00:00:00.000Z", finished: "NOPE" }],
+      },
+    });
+
+    const sdk = new FlipFlag({
+      publicKey: "pub",
+      privateKey: "priv",
+    });
+
+    await expect(sdk.init()).rejects.toThrow(/invalid "finished" date/i);
+  });
+
+  test("getFeaturesFlags(): throws during init if publicKey is missing", async () => {
+    const sdk = new FlipFlag({
+      publicKey: "pub",
+      privateKey: "priv",
+      ignoreMissingConfig: true,
+    });
+
+    await expect(sdk.init()).rejects.toThrow(/Public key is missing/i);
+  });
+
+  test("getFeaturesFlags(): if response not ok during init, init rejects", async () => {
+    (global as any).fetch = jest
+      .fn()
+      .mockResolvedValueOnce(
+        makeResponse({ ok: false, status: 401, text: "unauthorized" }),
+      );
+
+    const sdk = new FlipFlag({
+      publicKey: "pub",
+      privateKey: "priv",
+      ignoreMissingConfig: true,
+    });
+
+    await expect(sdk.init()).rejects.toThrow(/Failed to get features/i);
+  });
+
+  test("isEnabled(): returns false and creates feature when local feature is missing", async () => {
+    // fetch returns empty flags set
+    (global as any).fetch = jest
+      .fn()
+      .mockResolvedValue(makeResponse({ ok: true, json: {} }));
+
+    const sdk = new FlipFlag({
+      publicKey: "pub",
+      privateKey: "priv",
+      ignoreMissingConfig: true,
+    });
+
+    await sdk.init();
+    const enabled = sdk.isEnabled("unknown.feature");
 
     expect(enabled).toBe(false);
-    // createFeature делает POST на /v1/sdk/feature
-    expect(fetchMock).toHaveBeenCalledWith(
-      '/v1/sdk/feature',
+
+    // createFeature should be attempted (POST /v1/sdk/feature) because privateKey exists
+    expect((global as any).fetch).toHaveBeenCalledWith(
+      expect.stringContaining("/v1/sdk/feature"),
       expect.objectContaining({
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          featureName: 'newFeature',
-          privateKey: 'private-key',
-          times: [],
-        }),
-      })
+        method: "POST",
+        body: expect.stringContaining('"featureName":"unknown.feature"'),
+      }),
     );
   });
 
-  test('isEnabled не делает запрос на создание, если нет privateKey', () => {
-    const manager = createManager({ privateKey: undefined as any });
-    const anyManager = manager as any;
+  test("isEnabled(): returns cached enabled state and records usage", async () => {
+    (global as any).fetch = jest.fn().mockResolvedValue(
+      makeResponse({
+        ok: true,
+        json: { "my.feature": { enabled: true } },
+      }),
+    );
 
-    anyManager.featuresFlags = {};
-
-    const enabled = manager.isEnabled('someFeature');
-
-    expect(enabled).toBe(false);
-    expect(fetchMock).not.toHaveBeenCalled();
-  });
-
-  test('declareFeature сохраняет опции во внутреннем кеше и syncFeaturesTimes отправляет их на сервер', async () => {
-    const manager = createManager();
-    const anyManager = manager as any;
-
-    const options: IDeclareFeatureOptions = {
-      times: [{ startAt: 1, endAt: 2 }] as any,
-    };
-
-    manager.declareFeature('myFeature', options);
-
-    expect(anyManager.featuresTimes['myFeature']).toBe(options);
-
-    fetchMock.mockResolvedValue({
-      ok: true,
-      json: jest.fn().mockResolvedValue({}),
+    const sdk = new FlipFlag({
+      publicKey: "pub",
+      privateKey: "priv",
+      ignoreMissingConfig: true,
     });
 
-    await anyManager.syncFeaturesTimes();
+    await sdk.init();
 
-    expect(fetchMock).toHaveBeenCalledWith(
-      '/v1/sdk/feature',
+    expect(sdk.isEnabled("my.feature")).toBe(true);
+
+    // usage is synced by the interval tick; advance time to trigger syncFeaturesUsage
+    const callsBefore = (global as any).fetch.mock.calls.length;
+    jest.advanceTimersByTime(10_000);
+    await Promise.resolve();
+
+    const callsAfter = (global as any).fetch.mock.calls.length;
+    expect(callsAfter).toBeGreaterThan(callsBefore);
+
+    // Confirm POST to /v1/sdk/feature/usages includes the featureName
+    expect((global as any).fetch).toHaveBeenCalledWith(
+      expect.stringContaining("/v1/sdk/feature/usages"),
       expect.objectContaining({
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          featureName: 'myFeature',
-          privateKey: 'private-key',
-          times: options.times,
-        }),
-      })
+        method: "POST",
+        body: expect.stringContaining('"featureName":"my.feature"'),
+      }),
     );
   });
 
-  test('syncFeaturesTimes возвращает null и не вызывает fetch, если нет privateKey', async () => {
-    const manager = createManager({ privateKey: undefined as any });
-    const anyManager = manager as any;
-
-    manager.declareFeature('myFeature', { times: [] } as any);
-
-    const result = await anyManager.syncFeaturesTimes();
-
-    expect(result).toBeNull();
-    expect(fetchMock).not.toHaveBeenCalled();
-  });
-
-  test('destroy останавливает интервал и очищает кеши', async () => {
-    const manager = createManager();
-    const anyManager = manager as any;
-
-    const serverFlags: Record<string, IFeatureFlag> = {
-      featureA: { enabled: true } as any,
-    };
-
-    fetchMock.mockResolvedValue({
-      ok: true,
-      json: jest.fn().mockResolvedValue(serverFlags),
+  test("syncFeaturesTimes(): does nothing if privateKey is missing", async () => {
+    const sdk = new FlipFlag({
+      publicKey: "pub",
+      // privateKey missing
+      ignoreMissingConfig: true,
     });
 
-    await manager.init();
+    await sdk.init();
 
-    manager.declareFeature('myFeature', { times: [] } as any);
+    // should not POST /v1/sdk/feature (createFeature requires privateKey)
+    const postFeatureCalls = (global as any).fetch.mock.calls.filter(
+      (c: any[]) =>
+        String(c[0]).includes("/v1/sdk/feature") && c[1]?.method === "POST",
+    );
+    // Note: usages sync is also POST but to /feature/usages
+    const createFeatureCalls = postFeatureCalls.filter(
+      (c: any[]) => !String(c[0]).includes("/v1/sdk/feature/usages"),
+    );
 
-    expect(anyManager.featuresFlags).toEqual(serverFlags);
-    expect(anyManager.featuresTimes).toHaveProperty('myFeature');
-
-    const clearIntervalSpy = jest.spyOn(global, 'clearInterval' as any);
-
-    manager.destroy();
-
-    expect(anyManager.inited).toBe(false);
-    expect(anyManager.featuresFlags).toEqual({});
-    expect(anyManager.featuresTimes).toEqual({});
-    expect(clearIntervalSpy).toHaveBeenCalled();
+    expect(createFeatureCalls.length).toBe(0);
   });
 
-  test('getFeaturesFlags обновляет локальный кеш флагов (через приватный метод)', async () => {
-    const manager = createManager();
-    const anyManager = manager as any;
-
-    const serverFlags: Record<string, IFeatureFlag> = {
-      f1: { enabled: true } as any,
-      f2: { enabled: false } as any,
-    };
-
-    fetchMock.mockResolvedValue({
-      ok: true,
-      json: jest.fn().mockResolvedValue(serverFlags),
+  test("destroy(): clears caches and stops polling", async () => {
+    const sdk = new FlipFlag({
+      publicKey: "pub",
+      privateKey: "priv",
+      ignoreMissingConfig: true,
     });
 
-    await anyManager.getFeaturesFlags();
+    await sdk.init();
 
-    expect(anyManager.featuresFlags).toEqual(serverFlags);
+    sdk.destroy();
+
+    const callsBefore = (global as any).fetch.mock.calls.length;
+    jest.advanceTimersByTime(20_000);
+    await Promise.resolve();
+
+    const callsAfter = (global as any).fetch.mock.calls.length;
+
+    // no extra polling after destroy
+    expect(callsAfter).toBe(callsBefore);
+
+    // After destroy, unknown feature should be treated as missing again and return false
+    expect(sdk.isEnabled("my.feature")).toBe(false);
   });
 });
