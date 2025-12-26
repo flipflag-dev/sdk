@@ -100,7 +100,7 @@ export class FlipFlag {
 
     for (const [featureName, cfg] of Object.entries(doc)) {
       const times = (cfg?.times ?? []).map((t) => ({
-        email: doc.contributor,
+        email: doc[featureName].contributor,
         start: t.started,
         end: t.finished ?? null,
       })) as IDeclareFeatureTime[];
