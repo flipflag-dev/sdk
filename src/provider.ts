@@ -91,9 +91,10 @@ export class FlipFlag {
     }
 
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-      throw new Error(
-        `FlipFlag: YAML root must be an object (mapping featureName -> config)`,
+      console.warn(
+        "FlipFlag: YAML root must be an object (mapping featureName -> config)",
       );
+      return;
     }
 
     const doc = parsed as FlipFlagYaml;
