@@ -1,15 +1,23 @@
 # FlipFlag SDK
 
-A lightweight client-side SDK for working with **FlipFlag**.  
-It allows you to:
+A lightweight client-side SDK for working with **FlipFlag**.
 
-- Declare features programmatically  
-- Auto-create features on the server  
-- Check whether a feature is enabled  
-- Periodically sync feature states  
-- Manage feature definitions (options + metadata)
+The SDK is designed to be simple, declarative, and safe by default.  
+It supports read-only usage as well as full feature management when a private key is provided.
 
-The SDK includes full TypeScript types and a Jest test suite.
+---
+
+## Features
+
+- Load feature flags (`enabled`) using a **public key**
+- Declare feature activation windows via `.flipflag.yml`
+- Automatically create features on the server (requires `privateKey`)
+- Periodically sync:
+  - feature flags
+  - feature timing declarations
+  - feature usage events
+- Local in-memory cache for flags, declarations, and usage
+- Full TypeScript support
 
 ---
 
@@ -23,133 +31,81 @@ yarn add @flipflag/sdk
 
 ---
 
-## Usage
-
-### Initialize the manager
+## Quick Start
 
 ```ts
-import { FlipFlag } from '@flipflag/sdk';
+import { FlipFlag } from "@flipflag/sdk";
 
 const manager = new FlipFlag({
-  publicKey: 'YOUR_PUBLIC_KEY',
-  privateKey: 'YOUR_PRIVATE_KEY', // optional for read-only mode
+  publicKey: "YOUR_PUBLIC_KEY",
+  privateKey: "YOUR_PRIVATE_KEY", // optional (read-only mode without it)
 });
 
 await manager.init();
-```
 
-### Declare a feature
-
-```ts
-manager.declareFeature('newFeature', {
-  times: [
-    {
-      start: new Date(),
-    },
-  ],
-});
-```
-
-If the feature does not exist on the server and you provided a `privateKey`,  
-the SDK will automatically create it.
-
-### Check if a feature is enabled
-
-```ts
-if (manager.isEnabled('newFeature')) {
-  console.log('Feature is enabled!');
+if (manager.isEnabled("newFeature")) {
+  console.log("Feature is enabled!");
 }
 ```
 
-If the feature has not been declared yet, a placeholder is created automatically  
-and `false` is returned.
+---
+
+## Configuration via `.flipflag.yml`
+
+By default, the SDK looks for a `.flipflag.yml` file in the project root  
+(`process.cwd()`), which is loaded during `init()`.
+
+### Example `.flipflag.yml`
+
+```yml
+newFeature:
+  contributor: epolevov@emd.one
+  times:
+    - started: "2025-12-01T00:00:00.000Z"
+      finished: "2025-12-31T23:59:59.000Z"
+
+anotherFeature:
+  contributor: dev@company.com
+  times:
+    - started: "2026-01-01T00:00:00.000Z"
+```
+
+---
+
+## Checking Feature State
+
+```ts
+manager.isEnabled("newFeature");
+```
 
 ---
 
 ## Automatic Syncing
 
-After calling `init()`, the manager:
+After calling `init()`, the SDK starts a **10-second polling loop**.
 
-- Loads all features using your `publicKey`
-- Starts a **10-second interval** that refreshes feature states
-- Keeps local cache in `declaredFeatures`
-
-To stop syncing:
+To stop syncing and clear all local state:
 
 ```ts
 manager.destroy();
 ```
 
-This clears the interval and resets the cache.
-
 ---
 
-## TypeScript Types
+## Manager Options
 
 ```ts
 export interface IManagerOptions {
   apiUrl?: string;
   publicKey: string;
   privateKey?: string;
+  configPath?: string;
+  ignoreMissingConfig?: boolean;
 }
-
-export interface IDeclareFeatureTime {
-  start: Date;
-  end?: Date;
-}
-
-export interface IDeclareFeatureOptions {
-  times: IDeclareFeatureTime[];
-}
-
-export interface IFeatureFlag {
-  enabled: boolean;
-}
-```
-
----
-
-## Running Tests
-
-This SDK comes with full Jest test coverage, including:
-
-- Mocked `fetch` requests
-- Interval polling behavior
-- Feature creation
-- Error handling
-- Local cache logic
-
----
-
-## Example: Full Integration
-
-```ts
-import { FlipFlag } from '@flipflag/sdk';
-
-async function main() {
-  const manager = new FlipFlag({
-    publicKey: 'pk_live_123',
-    privateKey: 'sk_live_123',
-  });
-
-  await manager.init();
-
-  manager.declareFeature('demoFeature', {
-    times: [
-      { start: new Date() },
-    ],
-  });
-
-  if (manager.isEnabled('demoFeature')) {
-    console.log('Demo feature is active!');
-  }
-}
-
-main();
 ```
 
 ---
 
 ## License
 
-MIT License.
+MIT License
