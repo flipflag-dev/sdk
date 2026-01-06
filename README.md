@@ -1,6 +1,6 @@
 # FlipFlag SDK
 
-A lightweight client-side SDK for working with **FlipFlag**.
+A lightweight client-side SDK for working with **FlipFlag** (https://flipflag.dev).
 
 The SDK is designed to be simple, declarative, and safe by default.  
 It supports read-only usage as well as full feature management when a private key is provided.
