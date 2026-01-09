@@ -68,6 +68,13 @@ export class FlipFlag {
   }
 
   private async loadConfigFromYaml() {
+    const isBrowser =
+      typeof window !== "undefined" && typeof document !== "undefined";
+
+    if (isBrowser) {
+      return;
+    }
+
     const configPath =
       this.options.configPath ?? path.resolve(process.cwd(), ".flipflag.yml");
 
