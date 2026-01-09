@@ -312,6 +312,7 @@ export class FlipFlag {
       },
       body: JSON.stringify({
         publicKey: this.options.publicKey,
+        privateKey: this.options.privateKey,
         usages: this.featuresUsage,
       }),
     }).catch((error) => {
