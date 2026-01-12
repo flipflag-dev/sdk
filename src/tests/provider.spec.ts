@@ -1,5 +1,5 @@
 // flipflag.test.ts
-import { FlipFlag } from "../provider";
+import { FlipFlag } from "../node";
 
 jest.useFakeTimers();
 
