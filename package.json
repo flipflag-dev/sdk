@@ -2,16 +2,17 @@
   "name": "@flipflag/sdk",
   "version": "1.1.5",
   "type": "module",
-  "types": "dist/index.d.ts",
   "description": "A lightweight client-side SDK for working with FlipFlag",
-  "main": "dist/index.js",
   "exports": {
     ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.js",
-      "default": "./dist/index.js"
+      "types": "./dist/browser.d.ts",
+      "browser": "./dist/browser.js",
+      "node": "./dist/node.js",
+      "default": "./dist/browser.js"
     }
   },
+  "main": "./dist/node.js",
+  "types": "./dist/browser.d.ts",
   "files": [
     "dist"
   ],
