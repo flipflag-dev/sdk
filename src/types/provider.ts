@@ -14,6 +14,12 @@ export interface IManagerOptions {
    * Default: true
    */
   ignoreMissingConfig?: boolean;
+
+  /**
+   * Polling interval in milliseconds.
+   * Default: 30000 (30 seconds)
+   */
+  pollingInterval?: number;
 }
 
 export interface IDeclareFeatureTime {

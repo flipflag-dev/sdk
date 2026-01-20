@@ -21,7 +21,11 @@ export class FlipFlagCore {
     protected readonly opts: IManagerOptions,
     private readonly loader?: ConfigLoader,
   ) {
-    this.options = { apiUrl: "https://api.flipflag.dev", ...opts };
+    this.options = {
+      apiUrl: "https://api.flipflag.dev",
+      pollingInterval: 30_000,
+      ...opts,
+    };
   }
 
   public async init() {
@@ -37,7 +41,7 @@ export class FlipFlagCore {
       this.getFeaturesFlags();
       this.syncFeaturesTimes();
       this.syncFeaturesUsage();
-    }, 10_000);
+    }, this.options.pollingInterval);
 
     this.inited = true;
   }

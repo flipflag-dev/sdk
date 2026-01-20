@@ -56,6 +56,7 @@ describe("FlipFlag (SDK manager)", () => {
       publicKey: "pub",
       privateKey: "priv",
       apiUrl: "https://api.flipflag.dev",
+      pollingInterval: 10_000,
     });
 
     await sdk.init();
@@ -79,7 +80,7 @@ describe("FlipFlag (SDK manager)", () => {
       }),
     );
 
-    // 4) polling every 10s
+    // 4) polling every 10s (custom pollingInterval)
     const fetchCallsBefore = (global as any).fetch.mock.calls.length;
     jest.advanceTimersByTime(10_000);
     // allow queued microtasks to flush
@@ -242,6 +243,7 @@ describe("FlipFlag (SDK manager)", () => {
       publicKey: "pub",
       privateKey: "priv",
       ignoreMissingConfig: true,
+      pollingInterval: 10_000,
     });
 
     await sdk.init();
@@ -293,6 +295,7 @@ describe("FlipFlag (SDK manager)", () => {
       publicKey: "pub",
       privateKey: "priv",
       ignoreMissingConfig: true,
+      pollingInterval: 10_000,
     });
 
     await sdk.init();
