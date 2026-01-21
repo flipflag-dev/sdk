@@ -68,6 +68,11 @@ export class FlipFlagCore {
     this.applyYamlConfig(doc);
   }
 
+  public async sync() {
+    await this.syncFeaturesTimes();
+    await this.syncFeaturesUsage();
+  }
+
   private applyYamlConfig(doc: FlipFlagYaml) {
     for (const [featureName, cfg] of Object.entries(doc)) {
       const times = (cfg?.times ?? []).map((t) => ({
