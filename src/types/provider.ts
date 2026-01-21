@@ -20,6 +20,12 @@ export interface IManagerOptions {
    * Default: 30000 (30 seconds)
    */
   pollingInterval?: number;
+
+  /**
+   * Sync interval in milliseconds (for syncing times and usage).
+   * Default: 90000 (90 seconds)
+   */
+  syncInterval?: number;
 }
 
 export interface IDeclareFeatureTime {

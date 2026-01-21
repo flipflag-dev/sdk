@@ -10,7 +10,8 @@ import { ConfigLoader } from "../platform/config-loader";
 
 export class FlipFlagCore {
   private inited = false;
-  private interval: any = null;
+  private pollingIntervalTimer: any = null;
+  private syncIntervalTimer: any = null;
 
   protected options: Partial<IManagerOptions>;
   private featuresTimes: Record<string, IDeclareFeatureOptions> = {};
@@ -24,6 +25,7 @@ export class FlipFlagCore {
     this.options = {
       apiUrl: "https://api.flipflag.dev",
       pollingInterval: 30_000,
+      syncInterval: 90_000,
       ...opts,
     };
   }
@@ -37,18 +39,22 @@ export class FlipFlagCore {
     await this.getFeaturesFlags();
     await this.syncFeaturesTimes();
 
-    this.interval = setInterval(() => {
+    this.pollingIntervalTimer = setInterval(() => {
       this.getFeaturesFlags();
+    }, this.options.pollingInterval);
+
+    this.syncIntervalTimer = setInterval(() => {
       this.syncFeaturesTimes();
       this.syncFeaturesUsage();
-    }, this.options.pollingInterval);
+    }, this.options.syncInterval);
 
     this.inited = true;
   }
 
   public destroy() {
     this.inited = false;
-    if (this.interval) clearInterval(this.interval);
+    if (this.pollingIntervalTimer) clearInterval(this.pollingIntervalTimer);
+    if (this.syncIntervalTimer) clearInterval(this.syncIntervalTimer);
     this.featuresTimes = {};
     this.featuresFlags = {};
     this.featuresUsage = [];
