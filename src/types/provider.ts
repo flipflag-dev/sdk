@@ -36,6 +36,8 @@ export interface IDeclareFeatureTime {
 
 export interface IDeclareFeatureOptions {
   times: IDeclareFeatureTime[];
+  type?: string;
+  description?: string;
 }
 
 export interface IFeatureFlag {

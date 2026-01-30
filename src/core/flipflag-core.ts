@@ -100,7 +100,11 @@ export class FlipFlagCore {
         }
       }
 
-      this.featuresTimes[featureName] = { times };
+      this.featuresTimes[featureName] = {
+        times,
+        type: cfg?.type,
+        description: cfg?.description,
+      };
     }
   }
 
