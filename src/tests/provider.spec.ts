@@ -30,8 +30,8 @@ describe("FlipFlag (SDK manager)", () => {
 
     // Mock js-yaml load
     yamlLoadSpy = jest.spyOn(require("js-yaml"), "load").mockReturnValue({
-      contributor: "dev@example.com",
       "my.feature": {
+        contributor: "dev@example.com",
         times: [{ started: "2025-01-01T10:00:00.000Z", finished: null }],
       },
     });
@@ -77,6 +77,13 @@ describe("FlipFlag (SDK manager)", () => {
       expect.objectContaining({
         method: "POST",
         body: expect.stringContaining('"privateKey":"priv"'),
+      }),
+    );
+    expect((global as any).fetch).toHaveBeenCalledWith(
+      expect.stringContaining("/v1/sdk/feature"),
+      expect.objectContaining({
+        method: "POST",
+        body: expect.stringContaining('"contributor":"dev@example.com"'),
       }),
     );
 
@@ -150,8 +157,10 @@ describe("FlipFlag (SDK manager)", () => {
 
   test('loadConfigFromYaml(): throws on invalid "started" date', async () => {
     yamlLoadSpy.mockReturnValueOnce({
-      contributor: "dev@example.com",
-      "bad.feature": { times: [{ started: "NOT_A_DATE", finished: null }] },
+      "bad.feature": {
+        contributor: "dev@example.com",
+        times: [{ started: "NOT_A_DATE", finished: null }],
+      },
     });
 
     const sdk = new FlipFlag({
@@ -164,8 +173,8 @@ describe("FlipFlag (SDK manager)", () => {
 
   test('loadConfigFromYaml(): throws on invalid "finished" date', async () => {
     yamlLoadSpy.mockReturnValueOnce({
-      contributor: "dev@example.com",
       "bad.feature": {
+        contributor: "dev@example.com",
         times: [{ started: "2025-01-01T00:00:00.000Z", finished: "NOPE" }],
       },
     });

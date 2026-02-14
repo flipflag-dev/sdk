@@ -82,7 +82,7 @@ export class FlipFlagCore {
   private applyYamlConfig(doc: FlipFlagYaml) {
     for (const [featureName, cfg] of Object.entries(doc)) {
       const times = (cfg?.times ?? []).map((t) => ({
-        email: doc[featureName].contributor,
+        email: cfg?.contributor,
         start: t.started,
         end: t.finished ?? null,
       })) as IDeclareFeatureTime[];
@@ -102,6 +102,7 @@ export class FlipFlagCore {
 
       this.featuresTimes[featureName] = {
         times,
+        contributor: cfg?.contributor,
         type: cfg?.type,
         description: cfg?.description,
       };

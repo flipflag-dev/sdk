@@ -36,6 +36,7 @@ export interface IDeclareFeatureTime {
 
 export interface IDeclareFeatureOptions {
   times: IDeclareFeatureTime[];
+  contributor?: string;
   type?: string;
   description?: string;
 }
