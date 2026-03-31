@@ -22,20 +22,13 @@ export interface IManagerOptions {
   pollingInterval?: number;
 
   /**
-   * Sync interval in milliseconds (for syncing times and usage).
+   * Sync interval in milliseconds (for syncing usage).
    * Default: 90000 (90 seconds)
    */
   syncInterval?: number;
 }
 
-export interface IDeclareFeatureTime {
-  email: string;
-  start: string;
-  end?: string;
-}
-
 export interface IDeclareFeatureOptions {
-  times: IDeclareFeatureTime[];
   contributor?: string;
   type?: string;
   description?: string;
@@ -50,13 +43,10 @@ export interface IFeatureFlagUsage {
   usedAt: Date;
 }
 
-export type YamlTime = { started: string; finished: string | null };
-
 export type YamlFeature = {
   description?: string;
   contributor?: string;
   type?: string; // "feature" и т.п.
-  times?: YamlTime[];
 };
 
 export type FlipFlagYaml = Record<string, YamlFeature>;

@@ -32,7 +32,6 @@ describe("FlipFlag (SDK manager)", () => {
     yamlLoadSpy = jest.spyOn(require("js-yaml"), "load").mockReturnValue({
       "my.feature": {
         contributor: "dev@example.com",
-        times: [{ started: "2025-01-01T10:00:00.000Z", finished: null }],
       },
     });
 
@@ -71,7 +70,7 @@ describe("FlipFlag (SDK manager)", () => {
       expect.objectContaining({ method: "GET" }),
     );
 
-    // 3) syncFeaturesTimes triggers createFeature POST for YAML features (privateKey required)
+    // 3) syncFeaturesDeclarations triggers createFeature POST for YAML features (privateKey required)
     expect((global as any).fetch).toHaveBeenCalledWith(
       expect.stringContaining("/v1/sdk/feature"),
       expect.objectContaining({
@@ -153,38 +152,6 @@ describe("FlipFlag (SDK manager)", () => {
     });
 
     await expect(sdk.init()).rejects.toThrow(/YAML root must be an object/i);
-  });
-
-  test('loadConfigFromYaml(): throws on invalid "started" date', async () => {
-    yamlLoadSpy.mockReturnValueOnce({
-      "bad.feature": {
-        contributor: "dev@example.com",
-        times: [{ started: "NOT_A_DATE", finished: null }],
-      },
-    });
-
-    const sdk = new FlipFlag({
-      publicKey: "pub",
-      privateKey: "priv",
-    });
-
-    await expect(sdk.init()).rejects.toThrow(/invalid "started" date/i);
-  });
-
-  test('loadConfigFromYaml(): throws on invalid "finished" date', async () => {
-    yamlLoadSpy.mockReturnValueOnce({
-      "bad.feature": {
-        contributor: "dev@example.com",
-        times: [{ started: "2025-01-01T00:00:00.000Z", finished: "NOPE" }],
-      },
-    });
-
-    const sdk = new FlipFlag({
-      publicKey: "pub",
-      privateKey: "priv",
-    });
-
-    await expect(sdk.init()).rejects.toThrow(/invalid "finished" date/i);
   });
 
   test("getFeaturesFlags(): throws during init if publicKey is missing", async () => {
@@ -277,7 +244,7 @@ describe("FlipFlag (SDK manager)", () => {
     );
   });
 
-  test("syncFeaturesTimes(): does nothing if privateKey is missing", async () => {
+  test("syncFeaturesDeclarations(): does nothing if privateKey is missing", async () => {
     const sdk = new FlipFlag({
       publicKey: "pub",
       // privateKey missing

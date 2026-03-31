@@ -1,7 +1,6 @@
 import {
   FlipFlagYaml,
   IDeclareFeatureOptions,
-  IDeclareFeatureTime,
   IFeatureFlag,
   IFeatureFlagUsage,
   IManagerOptions,
@@ -14,7 +13,7 @@ export class FlipFlagCore {
   private syncIntervalTimer: any = null;
 
   protected options: Partial<IManagerOptions>;
-  private featuresTimes: Record<string, IDeclareFeatureOptions> = {};
+  private featuresDeclarations: Record<string, IDeclareFeatureOptions> = {};
   private featuresFlags: Record<string, IFeatureFlag> = {};
   private featuresUsage: IFeatureFlagUsage[] = [];
 
@@ -37,14 +36,13 @@ export class FlipFlagCore {
     }
 
     await this.getFeaturesFlags();
-    await this.syncFeaturesTimes();
+    await this.syncFeaturesDeclarations();
 
     this.pollingIntervalTimer = setInterval(() => {
       this.getFeaturesFlags();
     }, this.options.pollingInterval);
 
     this.syncIntervalTimer = setInterval(() => {
-      this.syncFeaturesTimes();
       this.syncFeaturesUsage();
     }, this.options.syncInterval);
 
@@ -55,7 +53,7 @@ export class FlipFlagCore {
     this.inited = false;
     if (this.pollingIntervalTimer) clearInterval(this.pollingIntervalTimer);
     if (this.syncIntervalTimer) clearInterval(this.syncIntervalTimer);
-    this.featuresTimes = {};
+    this.featuresDeclarations = {};
     this.featuresFlags = {};
     this.featuresUsage = [];
   }
@@ -63,7 +61,7 @@ export class FlipFlagCore {
   public isEnabled(featureName: string) {
     const feature = this.featuresFlags[featureName];
     if (!feature) {
-      this.createFeature(featureName, { times: [] });
+      this.createFeature(featureName, {});
       return false;
     }
     this.upsertFeaturesUsage(featureName);
@@ -75,33 +73,13 @@ export class FlipFlagCore {
   }
 
   public async sync() {
-    await this.syncFeaturesTimes();
+    await this.syncFeaturesDeclarations();
     await this.syncFeaturesUsage();
   }
 
   private applyYamlConfig(doc: FlipFlagYaml) {
     for (const [featureName, cfg] of Object.entries(doc)) {
-      const times = (cfg?.times ?? []).map((t) => ({
-        email: cfg?.contributor,
-        start: t.started,
-        end: t.finished ?? null,
-      })) as IDeclareFeatureTime[];
-
-      for (const t of times) {
-        if (Number.isNaN(Date.parse(t.start))) {
-          throw new Error(
-            `FlipFlag: invalid "started" date in ${featureName}: ${t.start}`,
-          );
-        }
-        if (t.end !== null && Number.isNaN(Date.parse(String(t.end)))) {
-          throw new Error(
-            `FlipFlag: invalid "finished" date in ${featureName}: ${t.end}`,
-          );
-        }
-      }
-
-      this.featuresTimes[featureName] = {
-        times,
+      this.featuresDeclarations[featureName] = {
         contributor: cfg?.contributor,
         type: cfg?.type,
         description: cfg?.description,
@@ -171,9 +149,9 @@ export class FlipFlagCore {
     }
   }
 
-  private async syncFeaturesTimes() {
+  private async syncFeaturesDeclarations() {
     if (!this.options.privateKey) return null;
-    for (const [featureName, options] of Object.entries(this.featuresTimes)) {
+    for (const [featureName, options] of Object.entries(this.featuresDeclarations)) {
       this.createFeature(featureName, options);
     }
   }
