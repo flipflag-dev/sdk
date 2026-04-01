@@ -50,3 +50,22 @@ export type YamlFeature = {
 };
 
 export type FlipFlagYaml = Record<string, YamlFeature>;
+
+export type MetricEventType = 'assignment' | 'exposure' | 'metric';
+export type MetricSubjectType = 'user' | 'device' | 'session' | 'org';
+
+export interface IMetricEvent {
+  eventId: string;
+  experimentKey: string;
+  variant: string;
+  subjectType: MetricSubjectType;
+  subjectId: string;
+  eventType: MetricEventType;
+  metricName?: string;
+  value?: number;
+  properties?: Record<string, unknown>;
+  clientTs?: string;
+}
+
+export type ITrackEventParams = Omit<IMetricEvent, 'eventId' | 'eventType'>;
+export type ITrackMetricParams = ITrackEventParams & { metricName: string };

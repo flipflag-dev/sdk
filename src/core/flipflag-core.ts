@@ -4,6 +4,9 @@ import {
   IFeatureFlag,
   IFeatureFlagUsage,
   IManagerOptions,
+  IMetricEvent,
+  ITrackEventParams,
+  ITrackMetricParams,
 } from "../types/provider";
 import { ConfigLoader } from "../platform/config-loader";
 
@@ -16,6 +19,7 @@ export class FlipFlagCore {
   private featuresDeclarations: Record<string, IDeclareFeatureOptions> = {};
   private featuresFlags: Record<string, IFeatureFlag> = {};
   private featuresUsage: IFeatureFlagUsage[] = [];
+  private metricsQueue: IMetricEvent[] = [];
 
   constructor(
     protected readonly opts: IManagerOptions,
@@ -44,6 +48,7 @@ export class FlipFlagCore {
 
     this.syncIntervalTimer = setInterval(() => {
       this.syncFeaturesUsage();
+      this.flushMetrics();
     }, this.options.syncInterval);
 
     this.inited = true;
@@ -56,6 +61,7 @@ export class FlipFlagCore {
     this.featuresDeclarations = {};
     this.featuresFlags = {};
     this.featuresUsage = [];
+    this.metricsQueue = [];
   }
 
   public isEnabled(featureName: string) {
@@ -75,6 +81,42 @@ export class FlipFlagCore {
   public async sync() {
     await this.syncFeaturesDeclarations();
     await this.syncFeaturesUsage();
+  }
+
+  public trackAssignment(params: ITrackEventParams): void {
+    this.enqueueMetricEvent({ ...params, eventType: 'assignment' });
+  }
+
+  public trackExposure(params: ITrackEventParams): void {
+    this.enqueueMetricEvent({ ...params, eventType: 'exposure' });
+  }
+
+  public trackMetric(params: ITrackMetricParams): void {
+    this.enqueueMetricEvent({ ...params, eventType: 'metric' });
+  }
+
+  private enqueueMetricEvent(event: Omit<IMetricEvent, 'eventId' | 'clientTs'>): void {
+    this.metricsQueue.push({
+      ...event,
+      eventId: crypto.randomUUID(),
+      clientTs: new Date().toISOString(),
+    });
+    if (this.metricsQueue.length >= 500) {
+      this.flushMetrics();
+    }
+  }
+
+  private flushMetrics(): void {
+    if (!this.options.privateKey || this.metricsQueue.length === 0) return;
+
+    const events = this.metricsQueue.splice(0, this.metricsQueue.length);
+    const url = new URL("/v1/sdk/metrics/events", this.getBaseUrl());
+
+    fetch(url.toString(), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ privateKey: this.options.privateKey, events }),
+    }).catch((e) => console.error("Metrics Flush:", e));
   }
 
   private applyYamlConfig(doc: FlipFlagYaml) {
