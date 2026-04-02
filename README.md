@@ -51,12 +51,6 @@ const manager = new FlipFlag(
     // Initial configuration
     newFeature: {
       contributor: "dev@example.com",
-      times: [
-        {
-          started: "2025-12-01T00:00:00.000Z",
-          finished: "2025-12-31T23:59:59.000Z",
-        },
-      ],
     },
   }
 );
@@ -76,7 +70,6 @@ await manager.init();
 - ✅ **Auto-sync**: Periodic polling for flags and statistics
 - ✅ **Usage tracking**: Automatic feature usage analytics
 - ✅ **Experiment metrics**: Track assignments, exposures, and custom metric events
-- ✅ **Time windows**: Define feature activation periods
 - ✅ **TypeScript**: Full type safety out of the box
 - ✅ **Lightweight**: Minimal dependencies
 
@@ -208,21 +201,9 @@ const manager = new FlipFlag(
       description: "New Stripe integration",
       contributor: "payments-team@example.com",
       type: "feature",
-      times: [
-        {
-          started: "2025-01-15T00:00:00.000Z",
-          finished: null, // No end date
-        },
-      ],
     },
     legacyCheckout: {
       contributor: "payments-team@example.com",
-      times: [
-        {
-          started: "2024-01-01T00:00:00.000Z",
-          finished: "2025-03-01T00:00:00.000Z", // Will be disabled after this date
-        },
-      ],
     },
   }
 );
@@ -244,12 +225,6 @@ await manager.init();
 manager.declareFromObject({
   experimentalUI: {
     contributor: "ui-team@example.com",
-    times: [
-      {
-        started: new Date().toISOString(),
-        finished: null,
-      },
-    ],
   },
 });
 
@@ -335,39 +310,23 @@ The SDK automatically loads `.flipflag.yml` from your project root during `init(
 ```yaml
 newFeature:
   contributor: epolevov@emd.one
-  times:
-    - started: "2025-12-01T00:00:00.000Z"
-      finished: "2025-12-31T23:59:59.000Z"
 
 anotherFeature:
   contributor: dev@company.com
-  times:
-    - started: "2026-01-01T00:00:00.000Z"
-      finished: null
 ```
 
-### Advanced Example with Multiple Time Windows
+### Advanced Example
 
 ```yaml
 seasonalFeature:
   description: "Holiday sale banner"
   contributor: marketing@example.com
   type: "feature"
-  times:
-    # Black Friday 2025
-    - started: "2025-11-24T00:00:00.000Z"
-      finished: "2025-11-30T23:59:59.000Z"
-    # Christmas 2025
-    - started: "2025-12-20T00:00:00.000Z"
-      finished: "2025-12-26T23:59:59.000Z"
 
 betaFeature:
   description: "New analytics dashboard"
   contributor: analytics-team@example.com
   type: "experiment"
-  times:
-    - started: "2025-01-01T00:00:00.000Z"
-      finished: null # No end date - always active
 ```
 
 ### Custom Config Path
@@ -429,7 +388,6 @@ Programmatically declares features without YAML file.
 manager.declareFromObject({
   myFeature: {
     contributor: "dev@example.com",
-    times: [{ started: "2025-01-01T00:00:00.000Z", finished: null }],
   },
 });
 ```
@@ -511,22 +469,6 @@ interface YamlFeature {
   description?: string;
   contributor?: string;
   type?: string;
-  times?: YamlTime[];
-}
-
-interface YamlTime {
-  started: string; // ISO 8601 date string
-  finished: string | null; // ISO 8601 date string or null for no end
-}
-```
-
-### `IDeclareFeatureTime`
-
-```ts
-interface IDeclareFeatureTime {
-  email: string;
-  start: string; // ISO 8601 date string
-  end?: string; // ISO 8601 date string
 }
 ```
 
@@ -653,21 +595,6 @@ const manager = new FlipFlag({
   publicKey: "pub_xxxxxxxxxxxxx",
   ignoreMissingConfig: true,
 });
-```
-
-### Invalid date format
-
-```
-Error: FlipFlag: invalid "started" date in myFeature: not-a-date
-```
-
-**Solution**: Use ISO 8601 format for dates:
-
-```yaml
-myFeature:
-  times:
-    - started: "2025-01-01T00:00:00.000Z"  # ✅ Correct
-    # - started: "2025-01-01"              # ❌ Wrong
 ```
 
 ### Public key missing
