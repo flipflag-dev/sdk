@@ -1,6 +1,6 @@
 {
   "name": "@flipflag/sdk",
-  "version": "1.7.0",
+  "version": "1.8.0",
   "type": "module",
   "description": "A lightweight client-side SDK for working with FlipFlag",
   "exports": {
