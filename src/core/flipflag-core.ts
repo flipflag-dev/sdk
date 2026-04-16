@@ -30,6 +30,7 @@ export class FlipFlagCore {
       flagsFallbackApiUrl: "https://sdk-fallback.flipflag.dev",
       pollingInterval: 30_000,
       syncInterval: 90_000,
+      requestTimeout: 2_000,
       ...opts,
     };
   }
@@ -160,7 +161,10 @@ export class FlipFlagCore {
     const url = this.buildSdkUrl("/v1/sdk/feature/flags", baseUrl);
     url.searchParams.append("publicKey", publicKey);
 
-    const res = await fetch(url.toString(), { method: "GET" });
+    const res = await fetch(url.toString(), {
+      method: "GET",
+      signal: AbortSignal.timeout(this.options.requestTimeout!),
+    });
 
     if (!res.ok) {
       const errorText = await res.text();

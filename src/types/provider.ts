@@ -27,6 +27,13 @@ export interface IManagerOptions {
    * Default: 90000 (90 seconds)
    */
   syncInterval?: number;
+
+  /**
+   * Timeout in milliseconds for fetching feature flags from the primary API.
+   * If the request exceeds this limit, the SDK falls back to flagsFallbackApiUrl (if configured).
+   * Default: 2000 (2 seconds)
+   */
+  requestTimeout?: number;
 }
 
 export interface IDeclareFeatureOptions {
