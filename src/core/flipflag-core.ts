@@ -27,6 +27,7 @@ export class FlipFlagCore {
   ) {
     this.options = {
       apiUrl: "https://api.flipflag.dev",
+      flagsFallbackApiUrl: "https://sdk-fallback.flipflag.dev",
       pollingInterval: 30_000,
       syncInterval: 90_000,
       ...opts,
@@ -147,13 +148,51 @@ export class FlipFlagCore {
     );
   }
 
+  private getFlagsFallbackBaseUrl() {
+    return this.options.flagsFallbackApiUrl?.replace(/\/+$/, "") || null;
+  }
+
+  private buildSdkUrl(path: string, baseUrl: string) {
+    return new URL(path, baseUrl);
+  }
+
+  private async requestFeaturesFlags(baseUrl: string, publicKey: string) {
+    const url = this.buildSdkUrl("/v1/sdk/feature/flags", baseUrl);
+    url.searchParams.append("publicKey", publicKey);
+
+    const res = await fetch(url.toString(), { method: "GET" });
+
+    if (!res.ok) {
+      const errorText = await res.text();
+      const error = new Error(
+        `Failed to get features: ${res.status} - ${errorText}`,
+      ) as Error & { status?: number };
+      error.status = res.status;
+      throw error;
+    }
+
+    return (await res.json()) as Record<string, IFeatureFlag>;
+  }
+
+  private shouldUseFlagsFallback(error: unknown) {
+    if (!this.getFlagsFallbackBaseUrl()) return false;
+    if (!(error instanceof Error)) return true;
+
+    const status =
+      "status" in error && typeof error.status === "number"
+        ? error.status
+        : undefined;
+
+    return typeof status !== "number" || status >= 500;
+  }
+
   private async createFeature(
     featureName: string,
     options: IDeclareFeatureOptions,
   ) {
     if (!this.options.privateKey) return null;
 
-    const url = new URL("/v1/sdk/feature", this.getBaseUrl());
+    const url = this.buildSdkUrl("/v1/sdk/feature", this.getBaseUrl());
     fetch(url.toString(), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -173,20 +212,31 @@ export class FlipFlagCore {
     }
 
     try {
-      const url = new URL("/v1/sdk/feature/flags", this.getBaseUrl());
-      url.searchParams.append("publicKey", this.options.publicKey);
-
-      const res = await fetch(url.toString(), {
-        method: "GET",
-        headers: { "Content-Type": "application/json" },
-      });
-      if (!res.ok && !this.inited) {
-        const errorText = await res.text();
-        throw new Error(`Failed to get features: ${res.status} - ${errorText}`);
+      this.featuresFlags = await this.requestFeaturesFlags(
+        this.getBaseUrl(),
+        this.options.publicKey,
+      );
+    } catch (e) {
+      if (this.shouldUseFlagsFallback(e)) {
+        try {
+          this.featuresFlags = await this.requestFeaturesFlags(
+            this.getFlagsFallbackBaseUrl()!,
+            this.options.publicKey,
+          );
+          return;
+        } catch (fallbackError) {
+          if (!this.inited) {
+            throw fallbackError;
+          }
+          console.error("Get list features flag:", fallbackError);
+          return;
+        }
       }
 
-      this.featuresFlags = await res.json();
-    } catch (e) {
+      if (!this.inited) {
+        throw e;
+      }
+
       console.error("Get list features flag:", e);
     }
   }
@@ -204,7 +254,7 @@ export class FlipFlagCore {
         "Public key is missing. Please provide a valid publicKey in the SDK configuration.",
       );
     }
-    const url = new URL("/v1/sdk/feature/usages", this.getBaseUrl());
+    const url = this.buildSdkUrl("/v1/sdk/feature/usages", this.getBaseUrl());
 
     fetch(url.toString(), {
       method: "POST",

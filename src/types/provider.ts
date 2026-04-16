@@ -1,5 +1,6 @@
 export interface IManagerOptions {
   apiUrl?: string;
+  flagsFallbackApiUrl?: string;
   publicKey: string;
   privateKey?: string;
 

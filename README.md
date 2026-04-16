@@ -88,6 +88,12 @@ interface IManagerOptions {
   apiUrl?: string;
 
   /**
+   * Optional backup API base URL used only for GET /v1/sdk/feature/flags.
+   * Write operations always stay on apiUrl.
+   */
+  flagsFallbackApiUrl?: string;
+
+  /**
    * Public key for fetching feature flags (required).
    * Get it from your FlipFlag project settings.
    */
@@ -174,6 +180,21 @@ const manager = new FlipFlag({
   syncInterval: 60_000,     // Sync usage every 60 seconds
 });
 ```
+
+### Backup Flags Endpoint
+
+Use a separate backup base URL only for reading flags when the primary SDK API is temporarily unavailable:
+
+```ts
+const manager = new FlipFlag({
+  publicKey: "pub_xxxxxxxxxxxxx",
+  privateKey: "priv_xxxxxxxxxxxxx",
+  apiUrl: "https://api.flipflag.dev",
+  flagsFallbackApiUrl: "https://sdk-backup.flipflag.dev",
+});
+```
+
+The SDK falls back to `flagsFallbackApiUrl` only for `GET /v1/sdk/feature/flags` and only on network errors or `5xx` responses. `401`, `403`, and other client errors still come from the primary API and are not retried against backup.
 
 ### Manual Sync
 

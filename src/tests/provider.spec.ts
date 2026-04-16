@@ -180,6 +180,104 @@ describe("FlipFlag (SDK manager)", () => {
     await expect(sdk.init()).rejects.toThrow(/Failed to get features/i);
   });
 
+  test("getFeaturesFlags(): falls back to backup API on 5xx", async () => {
+    const fetchMock = jest.fn().mockResolvedValue(
+      makeResponse({
+        ok: true,
+        json: { "my.feature": { enabled: true } },
+      }),
+    );
+
+    fetchMock.mockResolvedValueOnce(
+      makeResponse({ ok: false, status: 503, text: "primary down" }),
+    );
+    fetchMock.mockResolvedValueOnce(
+      makeResponse({
+        ok: true,
+        json: { "my.feature": { enabled: true } },
+      }),
+    );
+
+    (global as any).fetch = fetchMock;
+
+    const sdk = new FlipFlag({
+      publicKey: "pub",
+      privateKey: "priv",
+      ignoreMissingConfig: true,
+      apiUrl: "https://api.flipflag.dev",
+      flagsFallbackApiUrl: "https://backup.flipflag.dev",
+    });
+
+    await sdk.init();
+
+    expect((global as any).fetch).toHaveBeenNthCalledWith(
+      1,
+      "https://api.flipflag.dev/v1/sdk/feature/flags?publicKey=pub",
+      expect.objectContaining({ method: "GET" }),
+    );
+    expect((global as any).fetch).toHaveBeenNthCalledWith(
+      2,
+      "https://backup.flipflag.dev/v1/sdk/feature/flags?publicKey=pub",
+      expect.objectContaining({ method: "GET" }),
+    );
+    expect(sdk.isEnabled("my.feature")).toBe(true);
+  });
+
+  test("getFeaturesFlags(): does not fall back on 403", async () => {
+    (global as any).fetch = jest
+      .fn()
+      .mockResolvedValueOnce(
+        makeResponse({ ok: false, status: 403, text: "forbidden" }),
+      );
+
+    const sdk = new FlipFlag({
+      publicKey: "pub",
+      privateKey: "priv",
+      ignoreMissingConfig: true,
+      flagsFallbackApiUrl: "https://backup.flipflag.dev",
+    });
+
+    await expect(sdk.init()).rejects.toThrow(/Failed to get features/i);
+    expect((global as any).fetch).toHaveBeenCalledTimes(1);
+  });
+
+  test("write operations stay on primary API when fallback is configured", async () => {
+    const sdk = new FlipFlag({
+      publicKey: "pub",
+      privateKey: "priv",
+      ignoreMissingConfig: true,
+      apiUrl: "https://api.flipflag.dev",
+      flagsFallbackApiUrl: "https://backup.flipflag.dev",
+    });
+
+    await sdk.init();
+    sdk.isEnabled("unknown.feature");
+    await sdk.sync();
+
+    const calls = (global as any).fetch.mock.calls.map((call: any[]) => [
+      String(call[0]),
+      call[1]?.method,
+    ]);
+
+    expect(calls).toEqual(
+      expect.arrayContaining([
+        [
+          "https://api.flipflag.dev/v1/sdk/feature",
+          "POST",
+        ],
+        [
+          "https://api.flipflag.dev/v1/sdk/feature/usages",
+          "POST",
+        ],
+      ]),
+    );
+    expect(
+      calls.some(([url, method]: [string, string]) =>
+        url.startsWith("https://backup.flipflag.dev/") && method === "POST",
+      ),
+    ).toBe(false);
+  });
+
   test("isEnabled(): returns false and creates feature when local feature is missing", async () => {
     // fetch returns empty flags set
     (global as any).fetch = jest
